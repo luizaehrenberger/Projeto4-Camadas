@@ -9,6 +9,7 @@
 
 # Importa pacote de tempo
 import time
+from timer_error import *
 
 # Threads
 import threading
@@ -70,6 +71,16 @@ class RX(object):
     def getNData(self, size):
         while(self.getBufferLen() < size):
             time.sleep(0.05)                 
+        return(self.getBuffer(size))
+    
+    def getNDataT(self, size,timer1, timer2):
+        while(self.getBufferLen() < size):
+            time.sleep(0.05)  
+            tempo_atual = time.time()
+            if (tempo_atual - timer2 > 20):
+                raise Timer2Error()
+            elif (tempo_atual - timer1 > 2):
+                raise Timer1Error()               
         return(self.getBuffer(size))
 
 

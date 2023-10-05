@@ -13,6 +13,7 @@
 from enlace import *
 import time
 import numpy as np
+from datetime import datetime
 
 # voce deverá descomentar e configurar a porta com através da qual ira fazer comunicaçao
 #   para saber a sua porta, execute no terminal :
@@ -64,111 +65,153 @@ def trata_pacote(pacote):
 
     return head, payload, eop
 
+
+
     
 ####                FIM DAS FUNÇÕES               ####
+####               Tipos de mensagens             ####
+# Chamado do cliente para o servidor 
+TIPO1 = 1
+# Resposta do servidor para o cliente
+TIPO2 = 2
+# Mensagem contendo o tipo de dados
+TIPO3 = 3
+# Mensagem enviada ao servidor relatando que a mensagem do tipo 3 foi recebida e averiguada
+TIPO4 = 4
+# Mensagem de time out, toda vez que o limite de espera exceder, esta mensagem será enviada (tanto cliewnte quanto servidor)
+TIPO5 = 5
+# Mensagem de erro, servidor envia para o cliente quando ocorre algum erro na mensagem tipo 3 - orienta cliente a enviar novamente
+TIPO6 = 6
+####                FIM DOS TIPOS DE MENSAGENS    ####
 
 serialName = "COM5"                  # Windows(variacao de)
-EOP = bytes([3,2,1]) 
+EOP = b'\xAA\xBB\xCC\xDD'
 
 def main():
     try:
-        #declaramos um objeto do tipo enlace com o nome "com". Essa é a camada inferior à aplicação. Observe que um parametro
-        #para declarar esse objeto é o nome da porta.
-        com1 = enlace(serialName)
-        # Ativa comunicacao. Inicia os threads e a comunicação seiral 
+        com1 = enlace(serialName) 
         com1.enable()
 
         #Se chegamos até aqui, a comunicação foi aberta com sucesso. Faça um print para informar.
         print("----COMUNICAÇÃO ABERTA COM SUCESSO----\n")
-       
         print("------------RECEPÇÃO VAI COMEÇAR---------\n")
 
-        # Recebendo a quantidade de comandos que será enviado
-        fez_handshake = False
-        handshake_client, t = com1.getData(12)
-        pacotes = handshake_client[4]
-        time.sleep(.5)
-        print(handshake_client)
-
-        #verificando o handshake do client
-        if fez_handshake == False:
-            if verifica_handshake(handshake_client):
-                tamanho_payload = int(handshake_client[2])
-                resto_handshake_client, _ = com1.getData(tamanho_payload+3)
-                time.sleep(.1)
-                handshake = handshake_client + resto_handshake_client
-                if not verifica_eop(handshake_client, handshake):
-                    return
-                else:
-                    handshake_server = np.asarray(bytes([8,1,0,0,0,0,0,0,0,0,0,0])+EOP)
-                    print(handshake_server)
-                    com1.sendData(handshake_server)
-                    time.sleep(.1)
-                    print("Handshake do servidor enviado ao client\n")
-                    fez_handshake = True
-
-        pacotes_antes = 1
-        pacotes_recebidos = 0
-
-        payloads_totais=b''
-
-        while True:
-            head, rxHeaderLen = com1.getData(12)
-            time.sleep(.1)
-
-            tamanho_payload = head[2]
-            pacote_atual = head[3]
-            total_pacotes = head[4]
-
-            #tamanho_payload+=1
-            if pacote_atual != pacotes_antes: 
-                print("Pacote fora de ordem")
-                com1.sendData(bytes([1,0,0,0,0,0,0,0,0,0,0,0]) + EOP)
-                com1.disable(); return
-            com1.sendData(bytes([2,0,0,0,0,0,0,0,0,0,0,0]) + EOP)
-            time.sleep(.1)
+        ocioso = True
         
-            pacotes_recebidos += 1
-            pacotes_antes = pacote_atual
+        while ocioso:
+            head_client, _ = com1.getData(10)
+            end_of_package,_ = com1.getData(4)
+            total_pacotes = head_client[3]
 
-            resto_pacote, _ = com1.getData(tamanho_payload+3)
+            #handshake 
+            if head_client[0] == 1 and end_of_package == EOP:
+                print("handshake recebido")
+                if head_client[1] == 1:
+                    ocioso = False
+                    print("É para mim")
+                    time.sleep(.1)
+
+                    #resposta do handshake
+                if ocioso == False:
+                    head_server = bytes([2,0,0,0,0,0,0,0,0,0])
+                    server_handshake = np.asarray(head_server + EOP)
+                    com1.sendData(server_handshake)
+                    print("resposta t2 enviada")
+                    cont = 1
+                else:
+                    print("Não é para mim")
+                    time.sleep(.1)
+            else:
+                print("Handshake incorreto")
+        sucesso = True 
+        cont = 1
+        string = b''
+        nump = 0
+        pacote_recebido_certo = b'\x01'
+        resposta = b'\x02\x00\x00' + bytes([total_pacotes]) +  b'\x00\x11\x00\x00\x00\x00' + EOP
+        while cont <= total_pacotes:
             time.sleep(.1)
-            
-            pacote_cliente = head + resto_pacote
-            #segmentando pacote
-            head_cliente, payload_cliente, eop_cliente = trata_pacote(pacote_cliente)
-            payloads_totais+=payload_cliente
-    
-            #verificando o eop 
-            if not verifica_eop(head_cliente, pacote_cliente):
-                print("EOP não recebido corretamente")
-                com1.disable(); return
-            if pacotes_recebidos == pacotes:
-                print("Recepção finalizada")
-                break
-            if pacotes_recebidos != pacotes:
-                pacotes_antes += 1
+            timer1 = time.time()
+            timer2 = time.time()
+            while sucesso:
+                agora = time.time()
+                conteudo = com1.rx.getIsEmpty()
+                if conteudo == False:
+                    head_client, _ = com1.getData(10)
+                    tamanho = head_client[5]
+                    tipo = head_client[0]
+                    numero = head_client[4]
+                    if tipo == 3:
+                        payload_cliente, _ = com1.getData(tamanho)
+                        string += payload_cliente
+                        #verifica o numero do pacote
+                        if cont == numero:
+                            print("numero do pacote esperado certo")
+                            payload_cliente, _ = com1.getData(tamanho)
+                            print('peguei payload')
 
-        bt = bytes([1,0,len(payloads_totais),0,0,0,0,0,0,0,0,0])    
-        if pacotes_recebidos != pacotes:
-            print("Pacotes recebidos diferente do total de pacotes")
-        else:
-            print("Transmissão finalizada com sucesso")
-            bt = bytes([1,0,len(payloads_totais),0,1,0,0,0,0,0,0,0])
+                            string += payload_cliente
+                            eop, nEop = com1.getData(4)
+                            arquivo = open('Server1.txt', 'a')
+                            arquivo.write("'{}' / receb / 3 / '{}'\n".format(datetime.now(), tamanho+14))
+                            arquivo.close()
 
-        com1.sendData(bt + EOP) 
-        time.sleep(.5)
+                            #verifica eop
+                            if eop == EOP:
+                                print("eop correto")
+                                cont += 1
+                                com1.sendData(b'\x04\x00\x00\x00\x00\x00\x00' + pacote_recebido_certo + b'\x00\x00\xAA\xBB\xCC\xDD')
+                                arquivo = open('Server1.txt', 'a')
+                                arquivo.write("'{}' / envio / 4 / '{}' / '{}' / '{}'\n".format(datetime.now(), resposta[5]+14, resposta[4],resposta[3]))
+                                arquivo.close()
+                                pacote_recebido_certo = bytes([numero])
+                            else:
+                                print("eop incorreto")
+                                pacote_recebido_errado = cont
+                                com1.sendData(b'\x04\x00\x00\x00\x00\x00\x00' + pacote_recebido_errado + b'\x00\x00\xAA\xBB\xCC\xDD')
+                                arquivo = open('Server2.txt', 'a')
+                                arquivo.write("'{}' / envio / 6 / '{}' / '{}' / '{}'\n".format(datetime.now(), resposta[5]+14, resposta[4],resposta[3]))
+                                arquivo.close()
+                        else:
+                            print("numero do pacote esperado errado")
+                            pacote_recebido_errado = cont
+                            com1.sendData(b'\x04\x00\x00\x00\x00\x00\x00' + bytes([pacote_recebido_errado]) + b'\x00\x00\xAA\xBB\xCC\xDD')
+                            arquivo = open('Server1.txt', 'a')
+                            arquivo.write("'{}' / envio / 6 / '{}' / '{}' / '{}'\n".format(datetime.now(), resposta[5]+14, resposta[4],resposta[3]))
+                            arquivo.close()
+                    elif agora-timer2 > 20:
+                        ocioso = True
+                        com1.sendData(b'\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00\xAA\xBB\xCC\xDD')
+                        arquivo = open('Server1.txt', 'a')
+                        arquivo.write("'{}' / envio / 5 / '{}' / '{}' / '{}'\n".format(datetime.now(), resposta[5]+14, resposta[4],resposta[3]))
+                        arquivo.close()
+                        print("Time out")
+                        print("Encerra")
+                        com1.disable()
+                        print("-------------------------")
+                        print("Comunicação encerrada")
+                        print("-------------------------")
+                        break
+                    elif agora-timer1 > 2:
+                        com1.sendData(b'\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\xAA\xBB\xCC\xDD')
+                        arquivo = open('Server1.txt', 'a')
+                        arquivo.write("'{}' / envio / 4 / '{}' / '{}' / '{}'\n".format(datetime.now(), resposta[5]+14, resposta[4],zresposta[3]))
+                        arquivo.close()
+                        timer1 = time.time()
 
-        print('')
-        print(len(payloads_totais))
-        print('')
+        print("chegou")
+        imageW = 'crawfinal.png'
 
-        img_recebida_nome = 'img\img_recebida.png'
-        f = open(img_recebida_nome,'wb')
-        f.write(payloads_totais)
+        f = open(imageW, 'wb')
+        f.write(string)
         f.close()
-
+        
+        print("-------------------------")
+        print("Comunicação encerrada")
+        print("-------------------------")
         com1.disable()
+
+            ##########################
         
     except Exception as erro:
         print("ops! :-\\")

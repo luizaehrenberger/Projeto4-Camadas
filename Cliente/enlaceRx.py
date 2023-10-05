@@ -81,7 +81,7 @@ class RX(object):
                 raise Timer2Error()
             elif (tempo_atual - timer1 > 2):
                 raise Timer1Error()               
-        return(self.getBuffer(size))
+        return(self.getBuffer(size)) 
 
 
     def clearBuffer(self):

@@ -8,4 +8,4 @@ class Timer1Error(Exception):
 class Timer2Error(Exception):
     def __init__(self, message='Cliente demorou mais que o esperado no timer 2')->None:
         self.message = message
-        super().__init__(self.message)
+        super().__init__(self.message) 

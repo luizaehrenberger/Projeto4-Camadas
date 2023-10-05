@@ -259,7 +259,7 @@ def main():
     except Exception as erro:
         print("ops! :-\\")
         print(erro)
-        com1.disable()
+        com1.disable() 
 
 
     #so roda o main quando for executado do terminal ... se for chamado dentro de outro modulo nao roda
